@@ -6,38 +6,8 @@ import sys
 import json
 import re
 
-api_key = '' 
+api_key = ''
 api_url = ''
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--action',
-                    metavar='action',
-                    help='Action (add/delete)',
-                    required=True)
-
-parser.add_argument('--fqdn',
-                    metavar='fqdn',
-                    help='Record fqdn',
-                    required=True)
-
-parser.add_argument('--type',
-                    metavar='type',
-                    help='Record type (A/PTR/A,PTR/CNAME)',
-                    required=True)
-
-parser.add_argument('--value',
-                    metavar='value',
-                    help='Record value',
-                    required=True)
-
-parser.add_argument('--ttl',
-                    metavar='ttl',
-                    help='Record ttl',
-                    required=False,
-                    default=3600)
-
-args = parser.parse_args()
 
 
 def check_ip(ip):
@@ -63,7 +33,7 @@ def print_error(message):
     sys.exit(1)
 
 
-def validate_variables():
+def validate_variables(args):
     if args.type == 'A' or args.type == 'A,PTR':
         check_domain(args.fqdn)
         check_ip(args.value)
@@ -83,6 +53,10 @@ def get_domain_name(record_type, fqdn):
     else:
         domain = '.'.join(fqdn.split('.')[-2:])
     return domain
+
+
+def get_ptr_fqdn(ip):
+    return '.'.join(reversed(ip.split('.'))) + '.in-addr.arpa'
 
 
 def record_exists(domain, fqdn):
@@ -124,30 +98,29 @@ def build_payload(fqdn, record, record_type, change_type):
     return payload
 
 
-def add_record(domain):
+def add_record(args, domain):
     record_type = args.type
     set_ptr = 'false'  # pdns api doesn't accept boolean (
+    change_type = 'REPLACE'
 
-    if record_exists(domain, args.fqdn):
-        print_error('This DNS record already exists')
-    else:
-        change_type = 'REPLACE'
+    if args.action == 'add':
+        if record_exists(domain, args.fqdn):
+            print_error('This DNS record already exists')
 
     if record_type == 'A,PTR':
-        if not record_exists(domain, args.fqdn):
-            set_ptr = 'true'
+        set_ptr = 'true'
         record_type = 'A'
 
     record = '''{{"content": "{value}",
-                   "disabled": false,
-                   "name": "{fqdn}",
-                   "ttl": {ttl},
-                   "type": "{type}",
-                   "set-ptr": {set_ptr} }}'''.format(fqdn=args.fqdn,
-                                                      type=record_type,
-                                                      value=args.value,
-                                                      ttl=args.ttl,
-                                                      set_ptr=set_ptr)
+                  "disabled": false,
+                  "name": "{fqdn}",
+                  "ttl": {ttl},
+                  "type": "{type}",
+                  "set-ptr": {set_ptr} }}'''.format(fqdn=args.fqdn,
+                                                    type=record_type,
+                                                    value=args.value,
+                                                    ttl=args.ttl,
+                                                    set_ptr=set_ptr)
 
     payload = build_payload(args.fqdn, record, record_type, change_type)
     api_request('PATCH', domain, payload)
@@ -157,7 +130,7 @@ def add_record(domain):
         print_error('Something went wrong')
 
 
-def del_record(domain):
+def del_record(args, domain):
     record_type = args.type
     if record_exists(domain, args.fqdn):
         change_type = 'DELETE'
@@ -165,7 +138,7 @@ def del_record(domain):
         print_error('This DNS record doesn\'t exist')
 
     if record_type == 'A,PTR':
-        ptr_fqdn = '.'.join(reversed(args.value.split('.'))) + '.in-addr.arpa'
+        ptr_fqdn = get_ptr_fqdn(args.value)
         ptr_domain = get_domain_name('PTR', ptr_fqdn)
 
         if record_exists(ptr_domain, ptr_fqdn):
@@ -183,15 +156,49 @@ def del_record(domain):
         print_error('Something went wrong')
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--action',
+                        metavar='action',
+                        help='Action (add/change/delete)',
+                        required=True)
+
+    parser.add_argument('--fqdn',
+                        metavar='fqdn',
+                        help='Record fqdn',
+                        required=True)
+
+    parser.add_argument('--type',
+                        metavar='type',
+                        help='Record type (A/PTR/A,PTR/CNAME)',
+                        required=True)
+
+    parser.add_argument('--value',
+                        metavar='value',
+                        help='Record value',
+                        required=True)
+
+    parser.add_argument('--ttl',
+                        metavar='ttl',
+                        help='Record ttl',
+                        required=False,
+                        default=3600)
+
+    args = parser.parse_args()    
+    return args
+
+
 def main():
-    validate_variables()
+    args = parse_args()
+    validate_variables(args)
 
     domain = get_domain_name(args.type, args.fqdn)
 
-    if args.action == 'add':
-        add_record(domain)
+    if args.action == 'add' or args.action == 'change':
+        add_record(args, domain)
     elif args.action == 'delete':
-        del_record(domain)
+        del_record(args, domain)
     else:
         print_error('Action is not supported')
 
