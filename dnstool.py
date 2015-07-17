@@ -17,7 +17,7 @@ def check_ip(ip):
 
 
 def check_domain(domain):
-    regex_domain = re.compile('([a-z\-0-9]+\.)?([a-z\-0-9]+)\.([a-z]+)$', re.IGNORECASE)
+    regex_domain = re.compile('([a-z\-0-9]+\.){0,63}([a-z\-0-9]+)\.([a-z]+)$', re.IGNORECASE)
     if not regex_domain.match(domain):
         print_error(domain + ' does not look like correct domain')
 
@@ -47,11 +47,24 @@ def validate_variables(args):
         print_error('This record type is not supported yet')
 
 
-def get_domain_name(record_type, fqdn):
-    if record_type == 'PTR':
-        domain = fqdn.split('.', 1)[1]
-    else:
-        domain = '.'.join(fqdn.split('.')[-2:])
+def get_domain_name(fqdn):
+    domains = []
+    found = False
+    domain = fqdn
+
+    domains_json = json.loads(api_request('GET', '', {}))
+    for dom in  domains_json:
+        domains.append(dom['name'])
+  
+    while not found:
+        if domain in domains:
+            found = True
+        else:
+            try:
+                domain = domain.split('.', 1)[1]
+            except:
+                print_error('Can\'t find subdomain for ' + fqdn)
+
     return domain
 
 
@@ -157,7 +170,16 @@ def del_record(args, domain):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
+                                     epilog='''Examples:
+dnstool.py --action add --fqdn test.test.com --type A --value 192.0.2.13
+
+dnstool.py --action change --fqdn test.test.com --type A,PTR --value 192.0.2.13
+
+dnstool.py --action add --fqdn 12.2.0.192.in-addr.arpa --type PTR --value test.test.com
+
+dnstool.py --action delete --fqdn test2.test.com --type CNAME --value test.test.com
+''')
 
     parser.add_argument('--action',
                         metavar='action',
@@ -193,7 +215,7 @@ def main():
     args = parse_args()
     validate_variables(args)
 
-    domain = get_domain_name(args.type, args.fqdn)
+    domain = get_domain_name(args.fqdn)
 
     if args.action == 'add' or args.action == 'change':
         add_record(args, domain)
