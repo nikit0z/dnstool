@@ -169,13 +169,13 @@ def del_record(args, domain):
 def parse_args():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
                                      epilog='''Examples:
-dnstool.py --action add --fqdn test.test.com --type A --value 192.0.2.13 --ttl 1800
+dnstool.py --api_url http://XXX --api_key XXX --action add --fqdn test.test.com --type A --value 192.0.2.13 --ttl 1800
 
-dnstool.py --action change --fqdn test.test.com --type A,PTR --value 192.0.2.13 --ttl 1800
+dnstool.py --api_url http://XXX --api_key XXX --action change --fqdn test.test.com --type A,PTR --value 192.0.2.13 --ttl 1800
 
-dnstool.py --action add --fqdn 12.2.0.192.in-addr.arpa --type PTR --value test.test.com
+dnstool.py --api_url http://XXX --api_key XXX --action add --fqdn 12.2.0.192.in-addr.arpa --type PTR --value test.test.com
 
-dnstool.py --action delete --fqdn test2.test.com --type CNAME --value test.test.com
+dnstool.py --api_url http://XXX --api_key XXX --action delete --fqdn test2.test.com --type CNAME --value test.test.com
 ''')
 
     parser.add_argument('--api_url',
