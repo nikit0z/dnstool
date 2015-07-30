@@ -6,9 +6,6 @@ import sys
 import json
 import re
 
-api_key = ''
-api_url = ''
-
 
 def check_ip(ip):
     regex_ip = re.compile('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
@@ -47,15 +44,15 @@ def validate_variables(args):
         print_error('This record type is not supported yet')
 
 
-def get_domain_name(fqdn):
+def get_domain_name(fqdn, api_url, api_key):
     domains = []
     found = False
     domain = fqdn
 
-    domains_json = json.loads(api_request('GET', '', {}))
-    for dom in  domains_json:
+    domains_json = json.loads(api_request(api_url, api_key, 'GET', '', {}))
+    for dom in domains_json:
         domains.append(dom['name'])
-  
+
     while not found:
         if domain in domains:
             found = True
@@ -72,15 +69,15 @@ def get_ptr_fqdn(ip):
     return '.'.join(reversed(ip.split('.'))) + '.in-addr.arpa'
 
 
-def record_exists(domain, fqdn):
-    json_responce = json.loads(api_request('GET', domain, {}))
+def record_exists(domain, fqdn, api_url, api_key):
+    json_responce = json.loads(api_request(api_url, api_key, 'GET', domain, {}))
     for record in json_responce['records']:
         if record['name'] == fqdn:
             return True
     return False
 
 
-def api_request(req_type, req_url, payload):
+def api_request(api_url, api_key, req_type, req_url, payload):
     timeout = 30
     headers = {'X-API-Key': api_key}
     try:
@@ -117,7 +114,7 @@ def add_record(args, domain):
     change_type = 'REPLACE'
 
     if args.action == 'add':
-        if record_exists(domain, args.fqdn):
+        if record_exists(domain, args.fqdn, args.api_url, args.api_key):
             print_error('This DNS record already exists')
 
     if record_type == 'A,PTR':
@@ -136,8 +133,8 @@ def add_record(args, domain):
                                                     set_ptr=set_ptr)
 
     payload = build_payload(args.fqdn, record, record_type, change_type)
-    api_request('PATCH', domain, payload)
-    if record_exists(domain, args.fqdn):
+    api_request(args.api_url, args.api_key, 'PATCH', domain, payload)
+    if record_exists(domain, args.fqdn, args.api_url, args.api_key):
         print 'Change was done succesfully'
     else:
         print_error('Something went wrong')
@@ -145,25 +142,25 @@ def add_record(args, domain):
 
 def del_record(args, domain):
     record_type = args.type
-    if record_exists(domain, args.fqdn):
+    if record_exists(domain, args.fqdn, args.api_url, args.api_key):
         change_type = 'DELETE'
     else:
         print_error('This DNS record doesn\'t exist')
 
     if record_type == 'A,PTR':
         ptr_fqdn = get_ptr_fqdn(args.value)
-        ptr_domain = get_domain_name('PTR', ptr_fqdn)
+        ptr_domain = get_domain_name(ptr_fqdn, args.api_url, args.api_key)
 
-        if record_exists(ptr_domain, ptr_fqdn):
+        if record_exists(ptr_domain, ptr_fqdn, args.api_url, args.api_key):
             payload = build_payload(ptr_fqdn, '', 'PTR', change_type)
-            api_request('PATCH', ptr_domain, payload)
+            api_request(args.api_url, args.api_key, 'PATCH', ptr_domain, payload)
 
     if record_type == 'A,PTR':
         record_type = 'A'
 
     payload = build_payload(args.fqdn, '', record_type, change_type)
-    api_request('PATCH', domain, payload)
-    if not record_exists(domain, args.fqdn):
+    api_request(args.api_url, args.api_key, 'PATCH', domain, payload)
+    if not record_exists(domain, args.fqdn, args.api_url, args.api_key):
         print 'Change was done succesfully'
     else:
         print_error('Something went wrong')
@@ -172,14 +169,24 @@ def del_record(args, domain):
 def parse_args():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
                                      epilog='''Examples:
-dnstool.py --action add --fqdn test.test.com --type A --value 192.0.2.13
+dnstool.py --action add --fqdn test.test.com --type A --value 192.0.2.13 --ttl 1800
 
-dnstool.py --action change --fqdn test.test.com --type A,PTR --value 192.0.2.13
+dnstool.py --action change --fqdn test.test.com --type A,PTR --value 192.0.2.13 --ttl 1800
 
 dnstool.py --action add --fqdn 12.2.0.192.in-addr.arpa --type PTR --value test.test.com
 
 dnstool.py --action delete --fqdn test2.test.com --type CNAME --value test.test.com
 ''')
+
+    parser.add_argument('--api_url',
+                        metavar='api_url',
+                        help='API url',
+                        required=True)
+
+    parser.add_argument('--api_key',
+                        metavar='api_key',
+                        help='API key',
+                        required=True)
 
     parser.add_argument('--action',
                         metavar='action',
@@ -207,7 +214,7 @@ dnstool.py --action delete --fqdn test2.test.com --type CNAME --value test.test.
                         required=False,
                         default=3600)
 
-    args = parser.parse_args()    
+    args = parser.parse_args()
     return args
 
 
@@ -215,7 +222,7 @@ def main():
     args = parse_args()
     validate_variables(args)
 
-    domain = get_domain_name(args.fqdn)
+    domain = get_domain_name(args.fqdn, args.api_url, args.api_key)
 
     if args.action == 'add' or args.action == 'change':
         add_record(args, domain)
